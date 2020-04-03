@@ -1,29 +1,16 @@
 import logging
+import page_handler
+import form_handler
+from form_handler import ClientError
+import utilities
+from utilities import EmailError
 
-from html import escape
-from urllib.parse import parse_qs
+REQUIRED_FIELDS = ['name', 'email', 'message', 'subject']
+FIELD_COUNT = 7
 
-import basic_validator as validator
-from basic_validator import UserError
-
-import ses_email as emailer
-from ses_email import EmailError
-
-import page_builder
-
-
-MAX_FIELD_COUNT = 7
-
-
-def validate(form_data):
-    # this function must return None or raise UserError
-    # UserError must pass dictionary of error messages
-    return validator.basic_validation(form_data)
-    
-    
-def email(form_data):
-    # this function must return a confirmation or raise EmailError
-    return emailer.send_ses_email(form_data)
+S3_BUCKET = utilities.get_environ_var("S3_BUCKET")
+S3_KEY = utilities.get_environ_var("S3_KEY")
+TEMPLATE_PAGE = utilities.get_S3_file(S3_BUCKET, S3_KEY).read()
 
 
 def lambda_handler(event, context):
@@ -31,55 +18,56 @@ def lambda_handler(event, context):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    # collect and clean form data
-    form_data = get_form_data(event)
-    
-    logger.debug("user submission: " + str(form_data))
+    user_input = form_handler(REQUIRED_FIELDS)
+    response_page = page_handler(TEMPLATE_PAGE)
 
     try:
-        # validate user input and captcha
+        # process and validate user input and captcha
         # may raise UserError
-        validate(form_data)
+        user_input.add_event(event, FIELD_COUNT)
+        logger.debug(str(user_input))
 
         # if data was good, try to send the email
-        # may raise EmailError
-        confirmation = email(form_data)
-        
+        # may raise ClientError
+        confirmation = send_email(user_input)
+
         # log email transmission and load success page
         logger.info('email sent: ' + confirmation)
-        return page_builder.success_page()
+        return response_page.success()
 
-    except UserError as e:
+    except ClientError as e:
         # user supplied invalid input
-        logger.debug('invalid input on: ' + str(form_data))
         logger.debug(e)
-        return page_builder.error_page(form_data, e)
+        logger.debug(user_input.error_messages)
+        response_page.repopulate(user_input.data)
+        return response_page.errors()
     
     except EmailError as e:
         # email handler failed
         logger.error(e.response['Error']['Message'])
-        logger.error("unsent contact attempt: " + str(form_data))
-        return page_builder.failure_page()
+        logger.error("unsent contact attempt: " + user_input)
+        return response_page.failure()
 
     except Exception as e:
         # all other (unknown) errors
-        logger.error('server error on: ' + str(form_data))
+        logger.error('server error on: ' + user_input.get_last())
         logger.error(e)
-        return page_builder.failure_page()
+        return response_page.failure()
 
 
-def get_form_data(event):
-    # get info from form page
-    form_data_url_encoded = event['body']
+def send_email(user_input):
+    subject = 'Website contact from {}'.format(
+        user_input.data["name"])
 
-    # convert url encoded form data into dictionary
-    form_data = parse_qs(
-        form_data_url_encoded,
-        keep_blank_values=True,
-        strict_parsing=False,
-        encoding='utf-8',
-        errors='replace',
-        max_num_fields=MAX_FIELD_COUNT)
-        
-    # collapse the dictionary, strip whitespace, and escape html characters
-    return {k: escape(v[0].strip()) for k, v in form_data.items()}
+    text_body = 'Subject: {}\r\n\r\nMessage: {}'.format(
+        user_input.get('subject'), user_input.get('message'))
+
+    html_body = '<H1>Subject: {}</H1><p>{}</p>'.format(
+        user_input.get('subject'), user_input.get('message'))
+
+    reply_to = user_input.get('email')
+
+    confirmation = utilities.send_SES_email(
+        subject, text_body, html_body, reply_to)
+
+    return confirmation
