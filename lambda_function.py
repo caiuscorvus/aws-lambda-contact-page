@@ -1,16 +1,14 @@
 import logging
-import page_handler
-import form_handler
-from form_handler import ClientError
-import utilities
-from utilities import EmailError
+from page_handler import WebPage
+from form_handler import FormData, ClientError
+from utilities import *
 
 REQUIRED_FIELDS = ['name', 'email', 'message', 'subject']
 FIELD_COUNT = 7
 
-S3_BUCKET = utilities.get_environ_var("S3_BUCKET")
-S3_KEY = utilities.get_environ_var("S3_KEY")
-TEMPLATE_PAGE = utilities.get_S3_file(S3_BUCKET, S3_KEY).read()
+S3_BUCKET = get_environ_var("S3_BUCKET")
+S3_KEY = get_environ_var("S3_KEY")
+TEMPLATE_PAGE = get_S3_file(S3_BUCKET, S3_KEY).read()
 
 
 def lambda_handler(event, context):
@@ -18,8 +16,8 @@ def lambda_handler(event, context):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    user_input = form_handler(REQUIRED_FIELDS)
-    response_page = page_handler(TEMPLATE_PAGE)
+    user_input = FormData(REQUIRED_FIELDS)
+    response_page = WebPage(TEMPLATE_PAGE)
 
     try:
         # process and validate user input and captcha
