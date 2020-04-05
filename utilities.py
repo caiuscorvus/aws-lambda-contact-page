@@ -1,17 +1,15 @@
 from os import environ
 from base64 import b64decode
 from boto3 import resource, client
-from botocore.exceptions import ClientError
 
+from exceptions import *
 
 # gets environmental variables
 def get_environ_var(key, encrypted=False):
     """
-    Returns variables in the lambda environment
+    Returns variables named in the lambda environment
 
-    :param key: variable to return
-    :param encrypted: set to True to use kms to decrypt the variable
-    :return: returns the (unencrypted) environment variable
+    Optionally, set 'encrypted' to True to to use kms to decrypt the variable
     """
     if not encrypted:
         return environ[key]
@@ -24,10 +22,6 @@ def get_environ_var(key, encrypted=False):
 def get_S3_file(bucket_name, file_name):
     """
     Wrapper for getting html files from connected S3 service
-
-    :param bucket_name: name of S3 Bucket
-    :param file_name: key of S3 Object
-    :return: returns obj.get()['Body']
     """
     s3 = resource('s3')
     bucket = s3.Bucket(bucket_name)
@@ -35,20 +29,9 @@ def get_S3_file(bucket_name, file_name):
     return obj.get()['Body']
 
 
-class EmailError(ClientError):
-    def __init__(self, arg):
-        self.args = arg
-
-
 def send_SES_email(subject, text_body, html_body, reply_to=""):
     """
     Wrapper for connected AWS Simple Email Service; raises EmailError on failure.
-
-    :param subject: subject
-    :param text_body: text_body
-    :param html_body: html_body
-    :param reply_to: reply_to
-    :return: confirmation code returned by SES
     """
     RECIPIENT = get_environ_var("SES_TARGET")
     SENDER = get_environ_var("SES_SENDER")

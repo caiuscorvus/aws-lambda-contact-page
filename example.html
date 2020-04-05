@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html  lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scion Development</title>
+    <link href="https://www.example.com/main.css" rel="stylesheet" type="text/css" />
+    <link rel="icon" href="https://www.example.com/favicon.png" type="image/png" />
+    <script src="breakthelink https://www.google.com/recaptcha/api.js" async defer></script>
+    <script>
+      function enable_submit(response) {
+         $(':input[type="submit"]').prop('disabled', false);
+      }
+    </script>
+</head>
+<body>
+    <header id="header">
+        <span id='title1'>This is a</span><br />
+        <span id='title2'>WEBSITE</span>
+        <p id='subtitle'>with a subtitle</p>
+    </header>
+
+    <main id="content">
+        <H1>Send us a message</H1>
+        <form action="https://submit.example.com" method="POST">
+            <p><label>Your Name<br />
+            <input type="text" name="name" value="" autocorrect=off autocapitalize="words" /></label></p>
+
+            <p><label>Email Address<br />
+            <input type="email" name="email" value="" autocorrect=off /></label></p>
+
+            <p><label>Subject<br />
+            <input type="text" size="48" name="subject" value="" autocapitalize="off" /></label></p>
+
+            <p><label>Message<br />
+            <textarea name="message" rows="8"></textarea></label></p>
+
+            <div class="g-recaptcha" data-sitekey="8FAKESITEKEYS123456_2d-ldmflm" align="center"></div>
+
+            <p id="button_holder"><input type="submit" name="submit" id="submit" value="Send Message" /></p>
+        </form>
+    </main>
+</body>
+</html>
+

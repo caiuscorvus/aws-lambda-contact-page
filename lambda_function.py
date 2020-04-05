@@ -2,6 +2,7 @@ import logging
 from page_handler import WebPage
 from form_handler import FormData, ClientError
 from utilities import *
+from exceptions import *
 
 REQUIRED_FIELDS = ['name', 'email', 'message', 'subject']
 FIELD_COUNT = 7
@@ -12,7 +13,10 @@ TEMPLATE_PAGE = get_S3_file(S3_BUCKET, S3_KEY).read()
 
 
 def lambda_handler(event, context):
-    # set up logging facility to record messages
+    """
+    The driver function that triggers on API call
+    """
+    #set up logging facility to record messages
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
@@ -54,6 +58,9 @@ def lambda_handler(event, context):
 
 
 def send_email(user_input):
+    """
+    Gets email content and formats it before sending.
+    """
     subject = 'Website contact from {}'.format(
         user_input.data["name"])
 

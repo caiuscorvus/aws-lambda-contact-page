@@ -4,14 +4,9 @@ from json import load
 from html import escape
 
 from utilities import get_environ_var
+from exceptions import *
 
 DEFAULT_MAX = 30
-
-
-class ClientError(ValueError):
-    def __init__(self, arg):
-        self.args = arg
-
 
 class FormData:
     """
@@ -37,9 +32,9 @@ class FormData:
         """
         Processes, cleans, and validates new form data
 
-        :param event: a dictionary with data urlencoded in event['body']
-        :param max_fields: how many fields to read before throwing an error
-        :return: self
+        Ths supplied event must be a a dictionary with data urlencoded in
+        event['body']. Optionally, provided the expected number of fields
+        to prevent loading extraneous data.
         """
         # reset error message list
         self.error_messages = {}
@@ -68,17 +63,12 @@ class FormData:
     def get(self, key):
         """
         Returns values from form data
-
-        :param key: field name
-        :return: latest value associated with that key
         """
         return self.data[key]
 
     def find_missing_values(self):
         """
         Raises ClientError if any values from required_values are None or empty
-
-        :return: None
         """
         new_errors = {k: "This field is required"
                       for k in self.required_fields if not self.data.get(k)}
@@ -90,9 +80,7 @@ class FormData:
 
     def check_captcha_result(self):
         """
-        Checks submitted captcha value against google api and raises exception on fail
-
-        :return: None
+        Checks submitted captcha value against google api and raises exceptions
         """
         CAPTCHA_SECRET = get_environ_var("CAPTCHA_SECRET", encrypted=True)
         CAPTCHA_API = get_environ_var("CAPTCHA_API")
