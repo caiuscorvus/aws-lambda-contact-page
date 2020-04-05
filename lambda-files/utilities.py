@@ -4,7 +4,7 @@ from boto3 import resource, client
 
 from exceptions import *
 
-# gets environmental variables
+
 def get_environ_var(key, encrypted=False):
     """
     Returns variables named in the lambda environment
@@ -18,10 +18,9 @@ def get_environ_var(key, encrypted=False):
         return client('kms').decrypt(CiphertextBlob=cipher_text_blob)['Plaintext']
 
 
-# pulls html file from the s3 bucket
 def get_S3_file(bucket_name, file_name):
     """
-    Wrapper for getting html files from connected S3 service
+    Wrapper for getting files from connected S3 service
     """
     s3 = resource('s3')
     bucket = s3.Bucket(bucket_name)

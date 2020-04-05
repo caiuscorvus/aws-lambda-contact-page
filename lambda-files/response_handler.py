@@ -16,9 +16,10 @@ FAILURE_CONTENT = """
 ERROR_MARKUP = """<b class="error"></b>"""
 
 
-def __new_tag(markup):
-    """Generates an html tag from markup and returns it as a BeautifulSoup."""
-    return BeautifulSoup(markup, 'html.parser')
+"""
+Todo: Implement a JSONResponse class to return HTML Headers along with the
+      WebPage body. Of course this means refactoring the API response, as well.
+"""
 
 
 class WebPage:
@@ -79,7 +80,7 @@ class WebPage:
                 # this field does not exist
                 break
 
-            error_tag = __new_tag(markup)
+            error_tag = self.__new_tag(markup)
 
             if error_tag is None:
                 raise ValueError("Improper error markup")
@@ -97,7 +98,7 @@ class WebPage:
         such tag exists, then this function silently returns the supplied
         (template) page with no change
         """
-        return __replace_content(SUCCESS_CONTENT)
+        return self.__replace_content(SUCCESS_CONTENT)
 
     def failure(self):
         """
@@ -107,7 +108,7 @@ class WebPage:
         such tag exists, then this function silently returns the supplied
         (template) page with no change
         """
-        return __replace_content(FAILURE_CONTENT)
+        return self.__replace_content(FAILURE_CONTENT)
 
     def custom(self, markup):
         """
@@ -117,7 +118,7 @@ class WebPage:
         such tag exists, then this function silently returns the supplied
         (template) page with no change
         """
-        return __replace_content(markup)
+        return self.__replace_content(markup)
 
     def __replace_content(self, markup):
         """
@@ -127,13 +128,17 @@ class WebPage:
         such tag exists, then this function silently returns the supplied
         (template) page with no change
         """
-        new_content = __new_tag(markup)
+        new_content = self.__new_tag(markup)
         content_tag = self.soup.find(["main"], {"id": "content"})
 
         if content_tag is not None:
             content_tag.replace_with(new_content)
 
         return self.soup.encode(formatter="minimal")
+
+    def __new_tag(self, markup):
+        """Generates an html tag from markup and returns it as a BeautifulSoup."""
+        return BeautifulSoup(markup, 'html.parser')
 
     def __repr__(self):
         return {'page': self.soup.encode(formatter="minimal"),

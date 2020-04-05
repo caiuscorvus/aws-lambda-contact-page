@@ -1,10 +1,11 @@
 import logging
-from page_handler import WebPage
-from form_handler import FormData, ClientError
+
+from response_handler import WebPage
+from event_handler import FormData
 from utilities import *
 from exceptions import *
 
-REQUIRED_FIELDS = ['name', 'email', 'message', 'subject']
+REQUIRED_FIELDS = ['name', 'email', 'message']
 FIELD_COUNT = 7
 
 S3_BUCKET = get_environ_var("S3_BUCKET")
@@ -16,7 +17,7 @@ def lambda_handler(event, context):
     """
     The driver function that triggers on API call
     """
-    #set up logging facility to record messages
+    # set up logging facility to record messages
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
@@ -33,27 +34,30 @@ def lambda_handler(event, context):
         # may raise ClientError
         confirmation = send_email(user_input)
 
-        # log email transmission and load success page
+        # log email transmission and return a success page
         logger.info('email sent: ' + confirmation)
         return response_page.success()
 
-    except ClientError as e:
+    except FormInputError as e:
         # user supplied invalid input
         logger.debug(e)
         logger.debug(user_input.error_messages)
+        # refill submitted form data and return the an annotated page
         response_page.repopulate(user_input.data)
-        return response_page.errors()
+        return response_page.errors(user_input.error_messages)
     
     except EmailError as e:
         # email handler failed
         logger.error(e.response['Error']['Message'])
-        logger.error("unsent contact attempt: " + user_input)
+        logger.error("unsent contact attempt: " + str(user_input))
+        # return a web page with a failure notification
         return response_page.failure()
 
     except Exception as e:
         # all other (unknown) errors
-        logger.error('server error on: ' + user_input.get_last())
+        logger.error('server error on: ' + user_input.last_post)
         logger.error(e)
+        # return a web page with a failure notification
         return response_page.failure()
 
 
@@ -64,15 +68,15 @@ def send_email(user_input):
     subject = 'Website contact from {}'.format(
         user_input.data["name"])
 
-    text_body = 'Subject: {}\r\n\r\nMessage: {}'.format(
-        user_input.get('subject'), user_input.get('message'))
+    text_body = '{}'.format(
+        user_input.get('message'))
 
-    html_body = '<H1>Subject: {}</H1><p>{}</p>'.format(
-        user_input.get('subject'), user_input.get('message'))
+    html_body = '<p>{}</p>'.format(
+        user_input.get('message'))
 
     reply_to = user_input.get('email')
 
-    confirmation = utilities.send_SES_email(
+    confirmation = send_SES_email(
         subject, text_body, html_body, reply_to)
 
     return confirmation

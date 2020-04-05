@@ -8,6 +8,7 @@ from exceptions import *
 
 DEFAULT_MAX = 30
 
+
 class FormData:
     """
     Class to hold form data and error messages.
@@ -15,10 +16,10 @@ class FormData:
 
     def __init__(self, required_fields=[]):
         """
-        Creates an empty form object required fields set ot blank string.
+        Creates an empty form object with required fields set to empty strings.
 
         Attributes of this class include:
-            required_fields -- fields that must have content
+            required_fields -- fields which must have content (non-empty)
             data -- dictionary with elements accessible by obj.get("key")
             error_messages -- dictionary of keys:messages for responses and log
             last_post -- latest post element passed to add_event method
@@ -74,7 +75,7 @@ class FormData:
                       for k in self.required_fields if not self.data.get(k)}
         if new_errors:
             self.error_messages.update(new_errors)
-            raise ClientError("Missing values in required fields in " + self.get_last())
+            raise FormInputError("Missing values in required fields in " + self.last_post)
 
         return None
 
@@ -121,7 +122,7 @@ class FormData:
             if not client_errors:
                 client_errors = {'g-recaptcha-response': "The captcha was incorrect"}
 
-            raise ClientError("Captcha error on " + self.get_last())
+            raise FormInputError("Captcha error on " + self.get_last())
         else:
             return None
 
