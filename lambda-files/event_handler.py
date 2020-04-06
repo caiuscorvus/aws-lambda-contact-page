@@ -25,7 +25,7 @@ class FormData:
             last_post -- latest post element passed to add_event method
         """
         self._data = {}
-        self._required_fields = required_fields
+        self.required_fields = required_fields
         self._input = None
 
     @property
@@ -60,10 +60,9 @@ class FormData:
             max_num_fields=max_fields)
 
         # collapse the dictionary, strip whitespace, and escape html characters
-        clean_data = ({k: escape(v[0].strip()) for k, v in new_data.items()})
+        self._data = ({k: escape(v[0].strip()) for k, v in new_data.items()})
 
-        self._validate(clean_data)
-        self._data = clean_data
+        self._validate()
 
     def get(self, key=None):
         """
@@ -76,36 +75,38 @@ class FormData:
         else:
             return self._data.copy()
 
-    def _validate(self, new_data):
+    def _validate(self):
         """
         Raises errors on invalid data
         """
         # Notice: the captcha check is only called if there are no missing values
-        self._check_for_missing_values(new_data)
-        self._check_captcha_result(new_data)
+        self._check_for_missing_values()
+        self._check_captcha_result()
 
-    def _check_for_missing_values(self, new_data):
+    def _check_for_missing_values(self):
         """
         Raises InvalidInputError if any values from required_values are None or empty
         """
-        if not self._required_fields:
+        if self._required_fields is None:
             return
 
-        new_errors = {k: "This field is required"
-                      for k in self._required_fields if not new_data.get(k, None)}
+        # if _required_fields is not iterable, this will throw a TypeError
+        new_errors = {k: "This field is required" for k in self._required_fields if not self.get(k)}
         if new_errors:
-            raise InvalidInputError(message="Missing values in required fields",
-                                    last_input=self._input,
-                                    error_messages=new_errors)
+            raise InvalidInputError(
+                message="Missing values in required fields",
+                last_input=self._input,
+                error_messages=new_errors
+            )
 
-    def _check_captcha_result(self, new_data):
+    def _check_captcha_result(self):
         """
         Checks submitted captcha value against google api and raises exceptions
         """
         CAPTCHA_SECRET = get_environ_var("CAPTCHA_SECRET", encrypted=True)
         CAPTCHA_API = get_environ_var("CAPTCHA_API")
 
-        client_response = new_data.get('g-recaptcha_response', None)
+        client_response = self.get('g-recaptcha_response')
 
         # call google api if there is a g-recaptcha_response value in form
         if client_response:
@@ -115,9 +116,11 @@ class FormData:
             google_response = load(urlopen(request))
         # otherwise, raise InvalidInputError
         else:
-            raise InvalidInputError(message="Client captcha error",
-                                    last_input=self._input,
-                                    error_messages={'g-recaptcha-response': "Please complete the captcha"})
+            raise InvalidInputError(
+                message="Client captcha error",
+                last_input=self.last_input,
+                error_messages={'g-recaptcha-response': "Please complete the captcha"}
+            )
 
         # check if google passes the captcha
         if google_response.get('success', False):
@@ -146,10 +149,11 @@ class FormData:
 
             # if problems were solely in client response, raise InvalidInputError
             if client_errors and not server_errors:
-                raise InvalidInputError(message="Client captcha error",
-                                        last_input=self._input,
-                                        error_messages={'g-recaptcha-response': "There was a problem with the "
-                                                                                "captcha. Please try again."})
+                raise InvalidInputError(
+                    message="Client captcha error",
+                    last_input=self.last_input,
+                    error_messages={'g-recaptcha-response': "There was a problem with the captcha. Please try again."}
+                )
             # otherwise raise ValueError
             else:
                 raise ValueError(f"Captcha errors {google_response!s}")

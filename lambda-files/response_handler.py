@@ -56,7 +56,7 @@ class WebPage:
         'name' attribute or is 'g-recaptcha-response'. Messages are inserted
         with a default error markup tag if no markup is provided
         """
-        if message_dict is None:
+        if not message_dict:
             return
 
         if tag_markup is None:
@@ -111,11 +111,7 @@ class WebPage:
 
     def custom(self, markup, main_id=None):
         """
-        Creates a web page with the supplied markup.
-
-        The markup replaces the <main id='content'> tag and contents. If no
-        such tag exists, then this function silently returns the supplied
-        (template) page with no change
+        Replaces the contents of the <main> tag with markup and assigns new id.
         """
         self._replace_content(markup, main_id)
 

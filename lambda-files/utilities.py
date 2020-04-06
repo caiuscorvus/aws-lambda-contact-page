@@ -25,10 +25,10 @@ def get_S3_file(bucket_name, file_name):
     s3 = resource('s3')
     bucket = s3.Bucket(bucket_name)
     obj = bucket.Object(file_name)
-    return obj.get()['Body']
+    return obj.get()['Body'].read()
 
 
-def send_SES_email(subject, text_body, html_body, reply_to=""):
+def send_SES_email(subject, text_body=None, html_body=None, reply_to=""):
     """
     Wrapper for connected AWS Simple Email Service; raises EmailError on failure.
     """
@@ -37,51 +37,24 @@ def send_SES_email(subject, text_body, html_body, reply_to=""):
     REGION = get_environ_var("SES_REGION")
     CHARSET = "UTF-8"
 
-    body = {}
-
+    body = dict()
     if text_body is not None:
-        body.update({'Text': {
-            'Charset': CHARSET,
-            'Data': text_body,
-        }})
+        body['Text'] = {'Charset': CHARSET,
+                        'Data': text_body, }
     if html_body is not None:
-        body.update({'Html': {
-            'Charset': CHARSET,
-            'Data': html_body,
-        }})
+        body['Html'] = {'Charset': CHARSET,
+                        'Data': html_body, }
 
-    client_ = client('ses', region_name=REGION)
+    email = dict()
+    email['Destination'] = {'ToAddresses': [RECIPIENT, ], }
+    email['Message'] = {'Body': body,
+                        'Subject': {'Charset': CHARSET, 'Data': subject, }, }
+    email['Source'] = SENDER
+    email['ReplyToAddresses'] = [reply_to, ],
 
     try:
-        response = client_.send_email(
-            Destination={
-                'ToAddresses': [
-                    RECIPIENT,
-                ],
-            },
-            Message={
-                'Body': body,
-                'Subject': {
-                    'Charset': CHARSET,
-                    'Data': subject,
-                },
-            },
-            Source=SENDER,
-            ReplyToAddresses=[
-                reply_to,
-            ],
-        )
+        response = client('ses', region_name=REGION).send_email(**email)
     except ClientError as e:
         raise EmailError(e)
     else:
         return response['MessageId']
-
-
-def send_SES_text_email(subject, text_body, reply_to=""):
-    """See: send_SES_email."""
-    return send_SES_email(subject, text_body, None, reply_to)
-
-
-def send_SES_html_email(subject, html_body, reply_to=""):
-    """See: send_SES_email."""
-    return send_SES_email(subject, None, html_body, reply_to)
