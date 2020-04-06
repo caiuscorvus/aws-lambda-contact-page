@@ -1,25 +1,18 @@
 from bs4 import BeautifulSoup
+from exceptions import PageBuildingError
 
-SUCCESS_CONTENT = """
-<main id='response'>
+_SUCCESS_CONTENT = """
 <H1>Thank you for contacting us.</H1>
 <p>You can expect a response within 2-3 business days.
-</main>"""
+"""
 
-FAILURE_CONTENT = """
-<main id='response'>
+_FAILURE_CONTENT = """
 <H1>Something went wrong.</H1>
 <p>We know something is not working correctly are are working to fix it.</p>
 <p>Please try to send you message again tomorrow.</p>
-</main>"""
-
-ERROR_MARKUP = """<b class="error"></b>"""
-
-
 """
-Todo: Implement a JSONResponse class to return HTML Headers along with the
-      WebPage body. Of course this means refactoring the API response, as well.
-"""
+
+_ERROR_FORMAT = """<b class="error"></b>"""
 
 
 class WebPage:
@@ -28,124 +21,145 @@ class WebPage:
     """
 
     def __init__(self, template_page):
-        self.soup = BeautifulSoup(template_page, 'html.parser')
+        self._soup = BeautifulSoup(template_page, 'html.parser')
+        if self._soup.main is None:
+            raise PageBuildingError('Template page is missing <main> tag')
 
-    def as_is(self):
-        """
-        Returns the current page as a bytestring.
-        """
-        return self.soup.encode(formatter="minimal")
+    """
+    Todo: Implement an as_json(self) method and a headers property to return
+          HTML Headers along with the WebPage body.
 
-    def repopulate(self, form_data):
+          Of course this means refactoring the API response, as well.
+    """
+
+    def populate(self, form_data):
         """
         Repopulates page with supplied values and returns page as bytestring.
 
         Supplied dictionary keys should match form field 'name' attributes
         """
-        # iterate over form data
-        for field, response in form_data.items():
-            # find submitted element on form page
-            form_element = self.soup.find(
-                ["input", "textarea", "checkbox", "radio"],
-                {"name": field})
+        for tag in self._soup.find_all(['input', 'textarea', 'checkbox', 'radio']):
+            response = form_data.get(tag['name'], None)
+            if response is not None:
+                if tag.name == 'input':
+                    tag['value'] = response
+                elif tag.name == 'checkbox' or tag.name == 'radio':
+                    tag['checked'] = "checked" if response else ""
+                else:
+                    tag.string = response
 
-            # if the form element exists on the page and there is data to fill
-            if form_element and len(response) > 0:
-                if form_element.type == "input":
-                    form_element['value'] = response
-                elif form_element.type == "textarea":
-                    form_element.string = response
-                elif form_element.type == "checkbox" or type == "radio":
-                    form_element['checked'] = "checked"
-
-        return self.soup.encode(formatter="minimal")
-
-    def errors(self, error_data, markup=ERROR_MARKUP):
+    def annotate(self, message_dict, tag_markup=None, insert_before=True):
         """
-        Adds listed error messages to page and returns page as bytestring.
+        Adds listed messages to page, immediately before the element.
 
-        The messages are only inserted if the error key matches a form element
+        The messages are only inserted if the message key matches a an element
         'name' attribute or is 'g-recaptcha-response'. Messages are inserted
         with a default error markup tag if no markup is provided
         """
+        if message_dict is None:
+            return
+
+        if tag_markup is None:
+            tag_markup = self.error_format
+
         # iterate over error messages
-        for field, error_message in error_data.items():
-            # find submitted element on form page
-            if field == "g-recaptcha-response":
-                form_element = self.soup.find("div", {"class": "g-recaptcha"})
+        for field, message in message_dict.items():
+            if not message:
+                continue
+            elif field == 'g-recaptcha-response':
+                form_element = self._soup.find('div', {'class': "g-recaptcha"})
             else:
-                form_element = self.soup.find(field)
+                form_element = self._soup.find(attrs={'name': field})
 
-            if form_element is None:
-                # this field does not exist
-                break
+            # check if field exists on web page
+            if not form_element:
+                continue
 
-            error_tag = self.__new_tag(markup)
+            # make and insert a new tag
+            new_tag = self._new_tag(tag_markup)
+            new_tag.string = message
+            if insert_before:
+                form_element.insert_before(new_tag)
+            else:  # insert after
+                form_element.insert_after(new_tag)
 
-            if error_tag is None:
-                raise ValueError("Improper error markup")
-
-            error_tag.string = error_message
-            form_element.insert_before(error_tag)
-
-        return self.soup.encode(formatter="minimal")
+    def by_status_code(self, http_code, error_messages=None, error_format=None):
+        if http_code == 200:
+            self.success()
+        elif http_code == 400:
+            self.annotate(error_messages, error_format)
+        elif http_code == 500:
+            self.failure()
+        else:
+            raise PageBuildingError("No page defined with that status code")
 
     def success(self):
         """
-        Creates a web page with a success message and returns it as a bytestring.
+        Replaces the contents of the <main> tag with a success message.
 
-        The message replaces the <main id='content'> tag and contents. If no
-        such tag exists, then this function silently returns the supplied
-        (template) page with no change
+        Also, sets main tag id="response".
         """
-        return self.__replace_content(SUCCESS_CONTENT)
+        self._replace_content(self.success_message, "response")
 
     def failure(self):
         """
-        Creates a web page with a failure message and returns it as a bytestring.
+        Replaces the contents of the <main> tag with a failure message.
 
-        The message replaces the <main id='content'> tag and contents. If no
-        such tag exists, then this function silently returns the supplied
-        (template) page with no change
+        Also, sets main tag id="response".
         """
-        return self.__replace_content(FAILURE_CONTENT)
+        self._replace_content(self.failure_message, "response")
 
-    def custom(self, markup):
+    def custom(self, markup, main_id=None):
         """
-        Creates a web page with the supplied markup and returns it as a bytestring.
+        Creates a web page with the supplied markup.
 
         The markup replaces the <main id='content'> tag and contents. If no
         such tag exists, then this function silently returns the supplied
         (template) page with no change
         """
-        return self.__replace_content(markup)
+        self._replace_content(markup, main_id)
 
-    def __replace_content(self, markup):
+    def _replace_content(self, markup, main_id=None):
         """
-        Replaces <main id='content'> tag with markup.
-
-        The markup replaces the <main id='content'> tag and contents. If no
-        such tag exists, then this function silently returns the supplied
-        (template) page with no change
+        Replaces contents of <main> tag with supplied markup and optional id tag.
         """
-        new_content = self.__new_tag(markup)
-        content_tag = self.soup.find(["main"], {"id": "content"})
+        self._soup.main.contents = self._new_tag(markup)
+        if main_id is not None:
+            self._soup.main['id'] = main_id
 
-        if content_tag is not None:
-            content_tag.replace_with(new_content)
+    @staticmethod
+    def _new_tag(markup):
+        """Generates an html tag from markup and returns it as a BeautifulSoup.
 
-        return self.soup.encode(formatter="minimal")
+        If the markup is poorly formatted, a PageBuildingError will be raised
+        """
+        new_tag = BeautifulSoup(markup, 'html.parser').contents[0]
+        if new_tag is None:
+            raise PageBuildingError('Improper markup supplied')
+        return new_tag
 
-    def __new_tag(self, markup):
-        """Generates an html tag from markup and returns it as a BeautifulSoup."""
-        return BeautifulSoup(markup, 'html.parser')
+    @property
+    def body(self):
+        return self._soup.encode(formatter='minimal')
+
+    @property
+    def success_message(self):
+        return _SUCCESS_CONTENT
+
+    @property
+    def failure_message(self):
+        return _FAILURE_CONTENT
+
+    @property
+    def error_format(self):
+        return _ERROR_FORMAT
 
     def __repr__(self):
-        return {'page': self.soup.encode(formatter="minimal"),
-                'success_message': SUCCESS_CONTENT,
-                'error_message': FAILURE_CONTENT,
-                'default_markup': ERROR_MARKUP
+        return {'body': self.body,
+                'success_message': self.success_message,
+                'failure_message': self.failure_message,
+                'error_format': self.error_format
                 }
 
     def __str__(self):
-        return str(self.soup.prettify())
+        return str(self._soup.prettify())

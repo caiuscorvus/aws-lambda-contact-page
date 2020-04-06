@@ -1,16 +1,16 @@
 import logging
 
-from response_handler import WebPage
 from event_handler import FormData
+from response_handler import WebPage
 from utilities import *
 from exceptions import *
 
 REQUIRED_FIELDS = ['name', 'email', 'message']
 FIELD_COUNT = 7
 
-S3_BUCKET = get_environ_var("S3_BUCKET")
-S3_KEY = get_environ_var("S3_KEY")
-TEMPLATE_PAGE = get_S3_file(S3_BUCKET, S3_KEY).read()
+FORM_PAGE = get_S3_file(
+    get_environ_var("S3_BUCKET"),
+    get_environ_var("S3_KEY")).read()
 
 
 def lambda_handler(event, context):
@@ -21,44 +21,45 @@ def lambda_handler(event, context):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
+    # instantiate objects
     user_input = FormData(REQUIRED_FIELDS)
-    response_page = WebPage(TEMPLATE_PAGE)
+    target_page = WebPage(FORM_PAGE)
 
     try:
         # process and validate user input and captcha
         # may raise UserError
         user_input.add_event(event, FIELD_COUNT)
-        logger.debug(str(user_input))
+        logger.debug('input passed: ' + str(user_input))
 
         # if data was good, try to send the email
         # may raise ClientError
         confirmation = send_email(user_input)
-
-        # log email transmission and return a success page
         logger.info('email sent: ' + confirmation)
-        return response_page.success()
 
-    except FormInputError as e:
-        # user supplied invalid input
-        logger.debug(e)
-        logger.debug(user_input.error_messages)
-        # refill submitted form data and return the an annotated page
-        response_page.repopulate(user_input.data)
-        return response_page.errors(user_input.error_messages)
-    
-    except EmailError as e:
-        # email handler failed
+        # configure target_page
+        target_page.success()
+
+    except InvalidInputError as e:  # user supplied invalid input
+        logger.debug(e.raw_input)
+        logger.debug(e.error_messages)
+
+        target_page.populate(user_input._data)
+        target_page.annotate(e.error_messages)
+
+    except EmailError as e:  # email handler failed
         logger.error(e.response['Error']['Message'])
         logger.error("unsent contact attempt: " + str(user_input))
-        # return a web page with a failure notification
-        return response_page.failure()
 
-    except Exception as e:
-        # all other (unknown) errors
-        logger.error('server error on: ' + user_input.last_post)
+        target_page.failure()
+
+    except Exception as e:  # all other (unknown) errors
+        logger.error('server error on: ' + user_input._last_post)
         logger.error(e)
-        # return a web page with a failure notification
-        return response_page.failure()
+
+        target_page.failure()
+
+    finally:
+        return target_page.body
 
 
 def send_email(user_input):

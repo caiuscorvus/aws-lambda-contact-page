@@ -14,7 +14,7 @@ class FormData:
     Class to hold form data and error messages.
     """
 
-    def __init__(self, required_fields=[]):
+    def __init__(self, required_fields=None):
         """
         Creates an empty form object with required fields set to empty strings.
 
@@ -24,10 +24,14 @@ class FormData:
             error_messages -- dictionary of keys:messages for responses and log
             last_post -- latest post element passed to add_event method
         """
-        self.required_fields = required_fields
-        self.data = {k: "" for k in self.required_fields}
-        self.error_messages = {}
-        self.last_post = None
+        self._data = {}
+        self._last_post = None
+
+        if required_fields:
+            self._required_fields = required_fields
+            self._data = {k: "" for k in self._required_fields}
+        else:
+            self._required_fields = []
 
     def add_event(self, event, max_fields=DEFAULT_MAX):
         """
@@ -37,15 +41,12 @@ class FormData:
         event['body']. Optionally, provided the expected number of fields
         to prevent loading extraneous data.
         """
-        # reset error message list
-        self.error_messages = {}
-
         # get info from form page
-        self.last_post = event['body']
+        self._last_post = event['body']
 
         # convert url encoded form data into dictionary
         new_data = parse_qs(
-            self.last_post,
+            self._last_post,
             keep_blank_values=True,
             strict_parsing=False,
             encoding='utf-8',
@@ -53,33 +54,37 @@ class FormData:
             max_num_fields=max_fields)
 
         # collapse the dictionary, strip whitespace, and escape html characters
-        self.data = ({k: escape(v[0].strip()) for k, v in new_data.items()})
+        clean_data = ({k: escape(v[0].strip()) for k, v in new_data.items()})
 
+        self.validate(clean_data)
+        self._data = clean_data
+
+    def validate(self, new_data):
         # Notice: the captcha check is only called if there are no missing values
-        self.find_missing_values()
-        self.check_captcha_result()
+        if self._required_fields:
+            self._find_missing_values()
+        self._check_captcha_result()
 
-        return self
+        return None
 
     def get(self, key):
         """
         Returns values from form data
         """
-        return self.data[key]
+        return self._data[key]
 
-    def find_missing_values(self):
+    def _find_missing_values(self):
         """
         Raises ClientError if any values from required_values are None or empty
         """
         new_errors = {k: "This field is required"
-                      for k in self.required_fields if not self.data.get(k)}
+                      for k in self._required_fields if not self._data.get(k)}
         if new_errors:
-            self.error_messages.update(new_errors)
-            raise FormInputError("Missing values in required fields in " + self.last_post)
+            raise InvalidInputError("Missing values in required fields",
+                                    input_value=self._last_post,
+                                    error_messages=new_errors)
 
-        return None
-
-    def check_captcha_result(self):
+    def _check_captcha_result(self):
         """
         Checks submitted captcha value against google api and raises exceptions
         """
@@ -87,7 +92,7 @@ class FormData:
         CAPTCHA_API = get_environ_var("CAPTCHA_API")
 
         post_fields = {'secret': CAPTCHA_SECRET,
-                       'response': self.data['g-recaptcha_response']}
+                       'response': self._data['g-recaptcha_response']}
 
         request = Request(CAPTCHA_API, urlencode(post_fields).encode())
         response = load(urlopen(request))
@@ -105,14 +110,13 @@ class FormData:
             """
             error_codes = response.get('error-codes')
 
-            possible_server_errors = {'missing-input-response': "captcha returned missing-input-response",
-                                      'invalid-input-response': "captcha returned invalid-input-response",
-                                      'bad-request': "captcha returned bad-request"}
+            possible_server_errors = ['missing-input-response',
+                                      'invalid-input-response',
+                                      'bad-request']
 
-            server_errors = {k: possible_server_errors[k] for k in error_codes}
+            server_errors = [e for e in error_codes]
             if server_errors:
-                self.error_messages.update(server_errors)
-                raise ValueError("Captcha error on " + self.get_last())
+                raise ValueError("Captcha errors " + str(server_errors))
 
             possible_client_errors = {'missing-input-secret': "The captcha response was incorrect",
                                       'invalid-input-secret': "The captcha response was incorrect",
@@ -121,18 +125,17 @@ class FormData:
             client_errors = {k: possible_client_errors[k] for k in error_codes}
             if not client_errors:
                 client_errors = {'g-recaptcha-response': "The captcha was incorrect"}
-
-            raise FormInputError("Captcha error on " + self.get_last())
-        else:
-            return None
+            raise InvalidInputError("Client captcha error",
+                                    input_value=self._last_post,
+                                    error_messages=client_errors)
 
     def __repr__(self):
-        return {'data': self.data,
-                'last_post': self.last_post,
+        return {'data': self._data,
+                'last_post': self._last_post,
                 'error_messages': self.error_messages,
-                'required_fields': self.required_fields,
+                'required_fields': self._required_fields,
                 'default_max': DEFAULT_MAX
                 }
 
     def __str__(self):
-        return str(self.data)
+        return str(self._data)
