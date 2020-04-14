@@ -1,26 +1,16 @@
 from bs4 import BeautifulSoup
 from exceptions import PageBuildingError
-
-_SUCCESS_CONTENT = """
-<H1>Thank you for contacting us.</H1>
-<p>You can expect a response within 2-3 business days.
-"""
-
-_FAILURE_CONTENT = """
-<H1>Something went wrong.</H1>
-<p>We know something is not working correctly are are working to fix it.</p>
-<p>Please try to send you message again tomorrow.</p>
-"""
-
-_ERROR_FORMAT = """<b class="error"></b>"""
+from html import unescape, escape
 
 
 class WebPage:
     """
     Creates a web page with the supplied template (form).
     """
+    def __init__(self, template_page=None):
+        if template_page is None:
+            template_page = WebPage._BLANK_PAGE
 
-    def __init__(self, template_page):
         self._soup = BeautifulSoup(template_page, 'html.parser')
         if self._soup.main is None:
             raise PageBuildingError('Template page is missing <main> tag')
@@ -32,6 +22,10 @@ class WebPage:
           Of course this means refactoring the API response, as well.
     """
 
+    @property
+    def body(self):
+        return self._soup.encode(formatter='minimal')
+
     def populate(self, form_data):
         """
         Repopulates page with supplied values and returns page as bytestring.
@@ -40,6 +34,8 @@ class WebPage:
         """
         for tag in self._soup.find_all(['input', 'textarea', 'checkbox', 'radio']):
             response = form_data.get(tag['name'], None)
+            # reinsert quotes into user response
+            response = escape(unescape(response), quote=False)
             if response is not None:
                 if tag.name == 'input':
                     tag['value'] = response
@@ -60,7 +56,7 @@ class WebPage:
             return
 
         if tag_markup is None:
-            tag_markup = self.error_format
+            tag_markup = "<span></span>"
 
         # iterate over error messages
         for field, message in message_dict.items():
@@ -76,38 +72,13 @@ class WebPage:
                 continue
 
             # make and insert a new tag
-            new_tag = self._new_tag(tag_markup)
+            new_tag = self._new_tag(tag_markup).contents[0]
             new_tag.string = message
+
             if insert_before:
                 form_element.insert_before(new_tag)
             else:  # insert after
                 form_element.insert_after(new_tag)
-
-    def by_status_code(self, http_code, error_messages=None, error_format=None):
-        if http_code == 200:
-            self.success()
-        elif http_code == 400:
-            self.annotate(error_messages, error_format)
-        elif http_code == 500:
-            self.failure()
-        else:
-            raise PageBuildingError("No page defined with that status code")
-
-    def success(self):
-        """
-        Replaces the contents of the <main> tag with a success message.
-
-        Also, sets main tag id="response".
-        """
-        self._replace_content(self.success_message, "response")
-
-    def failure(self):
-        """
-        Replaces the contents of the <main> tag with a failure message.
-
-        Also, sets main tag id="response".
-        """
-        self._replace_content(self.failure_message, "response")
 
     def custom(self, markup, main_id=None):
         """
@@ -129,33 +100,41 @@ class WebPage:
 
         If the markup is poorly formatted, a PageBuildingError will be raised
         """
-        new_tag = BeautifulSoup(markup, 'html.parser').contents[0]
+        new_tag = BeautifulSoup(markup, 'html.parser')
         if new_tag is None:
             raise PageBuildingError('Improper markup supplied')
         return new_tag
 
-    @property
-    def body(self):
-        return self._soup.encode(formatter='minimal')
-
-    @property
-    def success_message(self):
-        return _SUCCESS_CONTENT
-
-    @property
-    def failure_message(self):
-        return _FAILURE_CONTENT
-
-    @property
-    def error_format(self):
-        return _ERROR_FORMAT
-
     def __repr__(self):
-        return {'body': self.body,
-                'success_message': self.success_message,
-                'failure_message': self.failure_message,
-                'error_format': self.error_format
-                }
+        return {'body': self.body}
 
     def __str__(self):
         return str(self._soup.prettify())
+
+    _BLANK_PAGE = """<!DOCTYPE html>
+    <html  lang="en">
+    <head>
+        <title></title>
+    </head>
+    <body> 
+        <main></main>
+    </body>
+    </html>
+    """
+
+
+class ReportPage(WebPage):
+    """
+    Generates a HTML report
+    """
+    def __init__(self, submission):
+        super().__init__()
+        self.report_submission = submission
+        self._request = submission.get("message")
+
+    @staticmethod
+    def report_request(submission, reply_to):
+        try:
+            return submission.get("name") == "report" and submission.get("email") in reply_to
+        except AttributeError:
+            return False

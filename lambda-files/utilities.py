@@ -28,11 +28,11 @@ def get_S3_file(bucket_name, file_name):
     return obj.get()['Body'].read()
 
 
-def send_SES_email(subject, text_body=None, html_body=None, reply_to=""):
+def send_SES_email(subject, text_body=None, html_body=None, reply_to=None):
     """
     Wrapper for connected AWS Simple Email Service; raises EmailError on failure.
     """
-    RECIPIENT = get_environ_var("SES_TARGET")
+    RECIPIENT = get_environ_var("SES_TARGET").split(",")
     SENDER = get_environ_var("SES_SENDER")
     REGION = get_environ_var("SES_REGION")
     CHARSET = "UTF-8"
@@ -46,11 +46,12 @@ def send_SES_email(subject, text_body=None, html_body=None, reply_to=""):
                         'Data': html_body, }
 
     email = dict()
-    email['Destination'] = {'ToAddresses': [RECIPIENT, ], }
+    email['Destination'] = {'ToAddresses': RECIPIENT, }
     email['Message'] = {'Body': body,
                         'Subject': {'Charset': CHARSET, 'Data': subject, }, }
     email['Source'] = SENDER
-    email['ReplyToAddresses'] = [reply_to, ],
+    if reply_to is not None:
+        email['ReplyToAddresses'] = reply_to,
 
     try:
         response = client('ses', region_name=REGION).send_email(**email)

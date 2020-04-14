@@ -1,4 +1,19 @@
+"""
+Part of aws-lambda-contact-page released under GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+https://projects.caiuscorvus.net/aws-lambda-contact-page
+"""
+
 from botocore.exceptions import ClientError
+
+
+class SpamError(ValueError):
+    """
+    Indicates that validation detected probable spam
+    """
+    def __init__(self, arg):
+        self.args = arg
 
 
 class InvalidInputError(ValueError):
@@ -10,6 +25,7 @@ class InvalidInputError(ValueError):
 
     def __str__(self):
         return str(self.message)
+
 
 class EmailError(ClientError):
     """
@@ -25,4 +41,3 @@ class PageBuildingError(ValueError):
     """
     def __init__(self, arg):
         self.args = arg
-
