@@ -1,8 +1,9 @@
 from os import environ
 from base64 import b64decode
-from boto3 import resource, client
+import json
 
-from exceptions import *
+from boto3 import resource, client
+from botocore.exceptions import ClientError
 
 
 def get_environ_var(key, encrypted=False):
@@ -18,7 +19,7 @@ def get_environ_var(key, encrypted=False):
         return client('kms').decrypt(CiphertextBlob=cipher_text_blob)['Plaintext']
 
 
-def get_S3_file(bucket_name, file_name):
+def get_file(bucket_name, file_name):
     """
     Wrapper for getting files from connected S3 service
     """
@@ -28,14 +29,21 @@ def get_S3_file(bucket_name, file_name):
     return obj.get()['Body'].read()
 
 
-def send_SES_email(subject, text_body=None, html_body=None, reply_to=None):
+def send_email(subject, text_body=None, html_body=None, reply_to=None, target=None):
     """
     Wrapper for connected AWS Simple Email Service; raises EmailError on failure.
     """
-    RECIPIENT = get_environ_var("SES_TARGET").split(",")
+    RECIPIENTS = get_environ_var("SES_TARGET").split(",")
     SENDER = get_environ_var("SES_SENDER")
     REGION = get_environ_var("SES_REGION")
     CHARSET = "UTF-8"
+
+    if target is None:
+        target = RECIPIENTS
+    else:
+        target = target.split(",")
+        if not set(target).issubset(RECIPIENTS):
+            raise ValueError('invalid email target(s)')
 
     body = dict()
     if text_body is not None:
@@ -46,7 +54,7 @@ def send_SES_email(subject, text_body=None, html_body=None, reply_to=None):
                         'Data': html_body, }
 
     email = dict()
-    email['Destination'] = {'ToAddresses': RECIPIENT, }
+    email['Destination'] = {'ToAddresses': target, }
     email['Message'] = {'Body': body,
                         'Subject': {'Charset': CHARSET, 'Data': subject, }, }
     email['Source'] = SENDER
@@ -56,6 +64,73 @@ def send_SES_email(subject, text_body=None, html_body=None, reply_to=None):
     try:
         response = client('ses', region_name=REGION).send_email(**email)
     except ClientError as e:
-        raise EmailError(e)
+        raise EmailClientError(e)
     else:
         return response['MessageId']
+
+
+def write_item(**kwargs):
+    with open('file.txt', 'a') as file:
+        file.write(json.dumps(kwargs)+'\n')
+
+
+def read_all_items():
+    table = []
+    with open('file.txt', 'r') as file:
+        for line in file:
+            table.append(json.loads(line))
+    return table
+
+
+def erase_all_items():
+    open('file.txt', 'w').close()
+
+
+def create_record(**kwargs):
+    pass  # todo
+
+
+def update_record(**kwargs):
+    pass  # todo
+
+
+def delete_record(**kwargs):
+    pass  # todo
+
+
+def read_record(**kwargs):
+    pass  # todo
+
+
+def find_record(**kwargs):
+    return kwargs  # todo
+
+
+def send_to_queue(s):
+    QUEUE_URL = "none"
+
+    try:
+        # sqs = boto3.resource('sqs')
+        # queue = sqs.get_queue_by_name(QueueName='test')
+        # response = queue.send_message(MessageBody=s)
+        return client('sqs').send_message(QueueURL=QUEUE_URL,
+                                          MessageBody=s)['MessageId']
+    except ClientError as e:
+        raise QueueClientError(e)
+
+
+class EmailClientError(ClientError):
+    """
+    Indicates a problem with supplied data
+    """
+    def __init__(self, arg):
+        self.args = arg
+
+
+class QueueClientError(ClientError):
+    """
+    Indicates a problem with supplied data
+    """
+
+    def __init__(self, arg):
+        self.args = arg
